@@ -2,12 +2,15 @@ package kafka
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/torys877/vectrain/pkg/types"
 	"time"
 )
 
-func (k *Kafka) FetchOne(ctx context.Context) (any, error) {
+func (k *Kafka) FetchOne(ctx context.Context) (*types.Entity, error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -17,13 +20,21 @@ func (k *Kafka) FetchOne(ctx context.Context) (any, error) {
 			if err != nil {
 				continue
 			}
-			return msg.Value, nil
+
+			var embedResp types.Entity
+			if err := json.Unmarshal(msg.Value, &embedResp); err != nil {
+				return nil, fmt.Errorf("error unmarshaling response: %v, body: %s", err, string(msg.Value))
+			}
+
+			k.itemDatas[embedResp.ID] = ItemData{Partition: msg.TopicPartition.Partition, Offset: int64(msg.TopicPartition.Offset)}
+
+			return &embedResp, nil
 		}
 	}
 }
 
-func (k *Kafka) FetchBatch(ctx context.Context, size int) ([]any, error) {
-	var res []any
+func (k *Kafka) FetchBatch(ctx context.Context, size int) ([]*types.Entity, error) {
+	var res []*types.Entity
 	for i := 0; i < size; i++ {
 		select {
 		case <-ctx.Done():
@@ -38,7 +49,18 @@ func (k *Kafka) FetchBatch(ctx context.Context, size int) ([]any, error) {
 				}
 				return res, err
 			}
-			res = append(res, msg.Value)
+
+			var embedResp types.Entity
+			if err := json.Unmarshal(msg.Value, &embedResp); err != nil {
+				return nil, fmt.Errorf("error unmarshaling response: %v, body: %s", err, string(msg.Value))
+			}
+
+			k.itemDatas[embedResp.ID] = ItemData{
+				Partition: msg.TopicPartition.Partition,
+				Offset:    int64(msg.TopicPartition.Offset),
+			}
+
+			res = append(res, &embedResp)
 		}
 	}
 	return res, nil

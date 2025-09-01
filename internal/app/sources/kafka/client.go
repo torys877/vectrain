@@ -13,6 +13,12 @@ type Kafka struct {
 	topicName string
 	groupId   string
 	consumer  *kafka.Consumer
+	itemDatas map[int64]ItemData
+}
+
+type ItemData struct {
+	Partition int32
+	Offset    int64
 }
 
 func NewKafkaClient(config *config.KafkaConfig) (*Kafka, error) {
@@ -63,6 +69,7 @@ func NewKafkaClient(config *config.KafkaConfig) (*Kafka, error) {
 		topicName: topic,
 		groupId:   config.GroupID,
 		consumer:  consumer,
+		itemDatas: make(map[int64]ItemData),
 	}, nil
 }
 

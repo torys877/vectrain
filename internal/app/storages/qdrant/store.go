@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/torys877/vectrain/pkg/types"
 	"strconv"
 )
 
-func (q *Qdrant) StoreOne(ctx context.Context, vector []float32, payload map[string]string) error {
-	qdrantPayload, err := q.getPayload(payload)
+func (q *Qdrant) StoreOne(ctx context.Context, vector *types.VectorEntity) error {
+	qdrantPayload, err := q.getPayload(vector.Payload)
 
 	if err != nil {
 		return fmt.Errorf("failed to get payload: %v", err)
@@ -28,7 +29,7 @@ func (q *Qdrant) StoreOne(ctx context.Context, vector []float32, payload map[str
 				Vectors: &qdrant.Vectors{
 					VectorsOptions: &qdrant.Vectors_Vector{
 						Vector: &qdrant.Vector{
-							Data: vector,
+							Data: vector.Vector,
 						},
 					},
 				},
@@ -44,7 +45,47 @@ func (q *Qdrant) StoreOne(ctx context.Context, vector []float32, payload map[str
 	return nil
 }
 
-func (q *Qdrant) StoreBatch(ctx context.Context, vectors [][]float32, payloads []map[string]string) error {
+func (q *Qdrant) StoreBatch(ctx context.Context, vectors []*types.VectorEntity) error {
+	if len(vectors) == 0 {
+		return nil
+	}
+
+	points := make([]*qdrant.PointStruct, 0, len(vectors))
+
+	for i, vector := range vectors {
+		qdrantPayload, err := q.getPayload(vector.Payload)
+		if err != nil {
+			return fmt.Errorf("failed to get payload for item %d: %v", i, err)
+		}
+
+		point := &qdrant.PointStruct{
+			Id: &qdrant.PointId{
+				PointIdOptions: &qdrant.PointId_Uuid{
+					Uuid: uuid.New().String(),
+				},
+			},
+			Vectors: &qdrant.Vectors{
+				VectorsOptions: &qdrant.Vectors_Vector{
+					Vector: &qdrant.Vector{
+						Data: vector.Vector,
+					},
+				},
+			},
+			Payload: qdrantPayload,
+		}
+
+		points = append(points, point)
+	}
+
+	upsertPoints := &qdrant.UpsertPoints{
+		CollectionName: q.collectionName,
+		Points:         points,
+	}
+
+	_, err := q.client.GetPointsClient().Upsert(ctx, upsertPoints) // TODO check dublicates, because they will be overwritten
+	if err != nil {
+		return fmt.Errorf("failed to upsert batch points: %v", err)
+	}
 	return nil
 }
 
