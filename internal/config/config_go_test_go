@@ -1,0 +1,73 @@
+package config_test
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"path/to/your/project/internal/config"
+)
+
+func TestLoadConfig(t *testing.T) {
+	// Create a temporary config file
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+
+	configContent := `
+source:
+  type: kafka
+  config:
+    brokers: ["localhost:9092"]
+    topic: raw-data
+    group_id: embedding-service
+
+embedder:
+  type: openai
+  config:
+    model: "text-embedding-3-small"
+    api_key: "test_api_key"
+
+storage:
+  type: qdrant
+  config:
+    url: "http://localhost:6333"
+    collection: "documents"
+    vector_size: 768
+    distance: cosine
+`
+
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Load and test the config
+	cfg, err := config.LoadConfig(configPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+
+	// Test source config
+	assert.Equal(t, "kafka", cfg.Source.Type)
+	kafkaConfig, err := cfg.GetKafkaConfig()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"localhost:9092"}, kafkaConfig.Brokers)
+	assert.Equal(t, "raw-data", kafkaConfig.Topic)
+	assert.Equal(t, "embedding-service", kafkaConfig.GroupID)
+
+	// Test embedder config
+	assert.Equal(t, "openai", cfg.Embedder.Type)
+	openaiConfig, err := cfg.GetOpenAIConfig()
+	require.NoError(t, err)
+	assert.Equal(t, "text-embedding-3-small", openaiConfig.Model)
+	assert.Equal(t, "test_api_key", openaiConfig.APIKey)
+
+	// Test storage config
+	assert.Equal(t, "qdrant", cfg.Storage.Type)
+	qdrantConfig, err := cfg.GetQdrantConfig()
+	require.NoError(t, err)
+	assert.Equal(t, "http://localhost:6333", qdrantConfig.URL)
+	assert.Equal(t, "documents", qdrantConfig.Collection)
+	assert.Equal(t, 768, qdrantConfig.VectorSize)
+	assert.Equal(t, "cosine", qdrantConfig.Distance)
+}

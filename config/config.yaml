@@ -1,0 +1,22 @@
+source:
+  type: kafka
+  config:
+    brokers: ["localhost:9092"]
+    topic: raw-data
+    group_id: embedding-service
+    workers: 1 #should be equal to partitions??
+
+storage:
+  type: qdrant
+  config:
+    url: "http://localhost:6333"
+    collection: "documents"
+    vector_size: 768
+    distance: cosine
+
+embedder:
+  type: ollama
+  config:
+    model: "nomic-embed-text"
+    api_key: "YOUR_API_KEY"
+    workers: 5
