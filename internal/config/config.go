@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
@@ -16,9 +17,12 @@ type Source interface {
 }
 
 type KafkaConfig struct {
-	Brokers []string `yaml:"brokers" validate:"required,min=1"`
-	Topic   string   `yaml:"topic" validate:"required"`
-	GroupID string   `yaml:"group_id" validate:"required"`
+	Brokers  []string `yaml:"brokers" validate:"required,min=1"`
+	Topic    string   `yaml:"topic" validate:"required"`
+	GroupID  string   `yaml:"group_id" validate:"required"`
+	Endpoint string   `yaml:"endpoint" validate:"required,url"`
+	Offset   string   `yaml:"offset" validate:"required,oneof=earliest latest"`
+	//OffsetNumber string   `yaml:"offset_number"`
 }
 
 func (k KafkaConfig) SourceType() string { return "kafka" }
@@ -35,8 +39,11 @@ type Embedder interface {
 }
 
 type OllamaConfig struct {
-	Model  string `yaml:"model" validate:"required"`
-	APIKey string `yaml:"api_key" validate:"required"`
+	Model                      string `yaml:"model" validate:"required"`
+	APIKey                     string `yaml:"api_key" validate:"required"`
+	Endpoint                   string `yaml:"endpoint" validate:"required,url"`
+	MaxResponseTimeout         string `yaml:"max_response_timeout" validate:"required"`
+	MaxResponseTimeoutDuration time.Duration
 }
 
 func (o OllamaConfig) EmbedderType() string { return "openai" }
@@ -47,10 +54,13 @@ type Storage interface {
 }
 
 type QdrantConfig struct {
-	URL        string `yaml:"url" validate:"required,url"`
-	Collection string `yaml:"collection" validate:"required"`
-	VectorSize int    `yaml:"vector_size" validate:"required"`
-	Distance   string `yaml:"distance" validate:"required,oneof=cosine euclid dot"`
+	URL            string            `yaml:"url" validate:"required,url"`
+	Host           string            `yaml:"host" validate:"required"`
+	Port           int               `yaml:"port" validate:"required"`
+	CollectionName string            `yaml:"collectionName" validate:"required"`
+	VectorSize     int               `yaml:"vector_size" validate:"required"`
+	Distance       string            `yaml:"distance" validate:"required,oneof=cosine euclid dot"`
+	Fields         map[string]string `yaml:"fields" validate:"required"`
 }
 
 func (q QdrantConfig) StorageType() string { return "qdrant" }
@@ -135,6 +145,12 @@ func LoadConfig(path string) (*Config, error) {
 		if err := validate.Struct(o); err != nil {
 			return nil, fmt.Errorf("invalid openai config: %w", err)
 		}
+
+		dur, err := time.ParseDuration(o.MaxResponseTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("invalid max_response_timeout: %v", err)
+		}
+		o.MaxResponseTimeoutDuration = dur
 		cfg.Embedder = o
 	default:
 		return nil, fmt.Errorf("unsupported embedder type: %s", raw.Embedder.Type)

@@ -10,13 +10,22 @@ storage:
   type: qdrant
   config:
     url: "http://localhost:6333"
-    collection: "documents"
+    host: "localhost"
+    port: 6334
+    collectionName: "movies"
     vector_size: 768
     distance: cosine
+    fields:
+      title: string
+      year: int
+      genre: string
+      rating: float
 
 embedder:
   type: ollama
   config:
+    emdpoint: "http://127.0.0.1:7878/v1/embedding"
     model: "nomic-embed-text"
     api_key: "YOUR_API_KEY"
+    max_response_timeout: 10s #response time in seconds
     workers: 5
