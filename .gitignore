@@ -19,10 +19,10 @@
 *.iml
 
 # Docker volumes
-data
-ollama
-qdrant_storage
-movie_data
+/data/
+/ollama/
+/qdrant_storage/
+/movie_data/
 
 # custom
-wip_data
+/wip_data/
