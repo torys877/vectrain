@@ -1,24 +1,29 @@
 package ollama
 
 import (
+	"fmt"
 	"github.com/torys877/vectrain/internal/config"
 	"github.com/torys877/vectrain/pkg/types"
-	"time"
 )
 
 type Ollama struct {
-	name                       string
-	model                      string
-	endpoint                   string
-	MaxResponseTimeoutDuration time.Duration
+	name     string
+	model    string
+	endpoint string
+	cfg      config.OllamaConfig
 }
 
-func NewOllamaClient(config *config.OllamaConfig) (*Ollama, error) {
+func NewOllamaClient(cfg config.Embedder) (*Ollama, error) {
+	ollamaConfig, ok := cfg.(config.OllamaConfig)
+	if !ok {
+		return nil, fmt.Errorf("invalid config type: expected OllamaConfig")
+	}
+
 	return &Ollama{
-		name:                       "ollama",
-		model:                      config.Model,
-		endpoint:                   config.Endpoint,
-		MaxResponseTimeoutDuration: config.MaxResponseTimeoutDuration,
+		name:     ollamaConfig.EmbedderType(),
+		model:    ollamaConfig.Model,
+		endpoint: ollamaConfig.Endpoint,
+		cfg:      ollamaConfig,
 	}, nil
 }
 

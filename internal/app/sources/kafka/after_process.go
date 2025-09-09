@@ -7,8 +7,8 @@ import (
 	"github.com/torys877/vectrain/pkg/types"
 )
 
-func (k *Kafka) AfterProcess(ctx context.Context, successMsgs []*types.Entity, errorMsgs []*types.ErrorEntity) error {
-	return k.commitOffsets(successMsgs)
+func (k *Kafka) AfterProcessHook(ctx context.Context, msgs []*types.Entity) error {
+	return k.commitOffsets(msgs)
 	// TODO handle error messages
 	//return nil
 }
@@ -19,12 +19,13 @@ func (k *Kafka) commitOffsets(items []*types.Entity) error {
 	}
 
 	offsets := make([]kafka.TopicPartition, 0, len(items))
-	var itemsToRemove []int64
+	var itemsToRemove [][16]byte
 
 	for _, item := range items {
 		offsets = append(offsets, kafka.TopicPartition{
 			Partition: k.itemDatas[item.ID].Partition,
 			Offset:    kafka.Offset(k.itemDatas[item.ID].Offset + 1),
+			Topic:     &k.topic,
 		})
 		itemsToRemove = append(itemsToRemove, item.ID)
 	}

@@ -1,11 +1,15 @@
 package types
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 type Source interface {
+	Name() string
+	Connect() error
 	FetchOne(ctx context.Context) (*Entity, error)
 	FetchBatch(ctx context.Context, size int) ([]*Entity, error)
-	AfterProcess(ctx context.Context, successMsgs []*Entity, errorMsgs []*ErrorEntity) error
-	Name() string
-	Close() error
+	AfterProcessHook(ctx context.Context, entities []*Entity) error
+	io.Closer
 }

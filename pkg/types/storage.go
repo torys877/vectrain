@@ -1,15 +1,14 @@
 package types
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 type Storage interface {
 	Name() string
-	StoreOne(ctx context.Context, vector *VectorEntity) error
-	StoreBatch(ctx context.Context, vectors []*VectorEntity) error
-	Close() error
-}
-
-type VectorEntity struct {
-	Entity
-	Vector []float32
+	Connect() error
+	StoreOne(ctx context.Context, vector *Entity) error
+	StoreBatch(ctx context.Context, vectors []*Entity) error
+	io.Closer
 }

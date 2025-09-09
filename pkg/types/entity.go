@@ -1,12 +1,21 @@
 package types
 
 type Entity struct {
-	ID      int64
+	ID      [16]byte
+	UUID    string
 	Text    string
 	Payload map[string]string
+	Vector  []float32
+	Err     error
 }
 
 type ErrorEntity struct {
-	Err string
 	Entity
+	Err error
 }
+
+//type VectorEntity struct {
+//	Entity
+//	Vector []float32
+//	Err    error
+//}

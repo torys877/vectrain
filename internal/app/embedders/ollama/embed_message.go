@@ -15,6 +15,9 @@ func (o *Ollama) Embed(ctx context.Context, message string) ([]float32, error) {
 		Prompt: message,
 	}
 
+	//fmt.Println("EMBED MSG: '" + message + "'")
+	//fmt.Println(reqBody)
+
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling request: %v", err)
@@ -29,7 +32,7 @@ func (o *Ollama) Embed(ctx context.Context, message string) ([]float32, error) {
 
 	// Send request
 	client := &http.Client{
-		Timeout: o.MaxResponseTimeoutDuration,
+		//Timeout: o.MaxResponseTimeoutDuration, // TODO
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -46,12 +49,13 @@ func (o *Ollama) Embed(ctx context.Context, message string) ([]float32, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("received non-OK response status: %d, body: %s", resp.StatusCode, string(respBody))
 	}
-
+	//fmt.Println("EMBED RESP: " + string(respBody))
 	// Parse response
 	var embedResp EmbeddingResponse
 	if err := json.Unmarshal(respBody, &embedResp); err != nil {
 		return nil, fmt.Errorf("error unmarshaling response: %v, body: %s", err, string(respBody))
 	}
 
+	//fmt.Println("EMBED RESP: " + string(respBody))
 	return embedResp.Embedding, nil
 }

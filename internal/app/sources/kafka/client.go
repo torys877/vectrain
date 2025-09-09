@@ -6,14 +6,16 @@ import (
 	"github.com/torys877/vectrain/internal/config"
 	"github.com/torys877/vectrain/pkg/types"
 	"log"
+	"strings"
 )
 
 type Kafka struct {
 	name      string
-	topicName string
+	topic     string
 	groupId   string
 	consumer  *kafka.Consumer
-	itemDatas map[int64]ItemData
+	itemDatas map[[16]byte]ItemData
+	cfg       config.KafkaConfig
 }
 
 type ItemData struct {
@@ -21,38 +23,52 @@ type ItemData struct {
 	Offset    int64
 }
 
-func NewKafkaClient(config *config.KafkaConfig) (*Kafka, error) {
+func NewKafkaClient(cfg config.Source) (*Kafka, error) {
+	kafkaConfig, ok := cfg.(config.KafkaConfig)
+	if !ok {
+		return nil, fmt.Errorf("invalid config type: expected KafkaConfig")
+	}
+
+	return &Kafka{
+		name:      "kafka",
+		topic:     kafkaConfig.Topic,
+		groupId:   kafkaConfig.GroupID,
+		itemDatas: make(map[[16]byte]ItemData),
+		cfg:       kafkaConfig,
+	}, nil
+}
+
+func (k *Kafka) Connect() error {
 	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers": config.Endpoint,
-		"group.id":          config.GroupID,
-		"auto.offset.reset": config.Offset,
+		"bootstrap.servers": strings.Join(k.cfg.Brokers, ","),
+		"group.id":          k.cfg.GroupID,
+		"auto.offset.reset": k.cfg.Offset,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create consumer: %s", err)
-		return nil, err
+		return err
 	}
-	defer consumer.Close()
+	k.consumer = consumer
 
-	topic := config.Topic
-	if err = consumer.SubscribeTopics([]string{topic}, nil); err != nil {
-		//log.Fatalf("Failed to subscribe to topic: %s", err)
-		return nil, err
+	if err = consumer.SubscribeTopics([]string{k.topic}, nil); err != nil {
+		log.Fatalf("Failed to subscribe to topic: %s", err)
+		return err
 	}
 
-	md, err := consumer.GetMetadata(&topic, false, 5000)
+	md, err := consumer.GetMetadata(&k.topic, false, 5000) // FIXME make timeout configurable
 	if err != nil {
 		log.Fatalf("Failed to get metadata: %v", err)
 	}
-	t, ok := md.Topics[topic]
+	t, ok := md.Topics[k.topic]
 	if !ok {
 		//log.Fatalf("Topic %s does not exist", topic)
-		return nil, fmt.Errorf("topic %s does not exist", topic)
+		return fmt.Errorf("topic %s does not exist", k.topic)
 	}
 
 	var partitions []kafka.TopicPartition
 	for _, p := range t.Partitions { // TODO make partition configurable
 		partition := kafka.TopicPartition{
-			Topic: &topic, Partition: p.ID, Offset: kafka.OffsetBeginning, // TODO make offset configurable
+			Topic: &k.topic, Partition: p.ID, Offset: kafka.OffsetBeginning, // TODO make offset configurable
 		}
 
 		partitions = append(partitions, partition)
@@ -61,16 +77,10 @@ func NewKafkaClient(config *config.KafkaConfig) (*Kafka, error) {
 	err = consumer.Assign(partitions)
 
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &Kafka{
-		name:      "kafka",
-		topicName: topic,
-		groupId:   config.GroupID,
-		consumer:  consumer,
-		itemDatas: make(map[int64]ItemData),
-	}, nil
+	return nil
 }
 
 func (k *Kafka) Name() string {

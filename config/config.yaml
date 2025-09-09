@@ -1,10 +1,32 @@
+app:
+  name: embedding-service
+  http:
+    port: 8083
+  pipeline:
+    mode: reliability # performance | reliability
+    source_batch_size: 10 # how many items load from source
+    storage_batch_size: 10 # how many items save in batch in storage
+    embedder_workers_cnt: 5 # how many embedder workers can work simultaneously
+    source_response_timeout: 10s
+    storage_response_timeout: 10s
+    embedder_response_timeout: 10s #response time in seconds
+    skip_embedder_errors: true # false/true - if we can only log errors and skip without interrupt all pipeline
+  logging:
+    level: info
+  monitoring:
+    enabled: true
+    port: 9090
+  retry_policy:
+    max_retries: 3
+    backoff: 2s
+
 source:
   type: kafka
   config:
     brokers: ["localhost:9092"]
-    topic: raw-data
+    topic: movie-topic1
     group_id: embedding-service
-    workers: 1 #should be equal to partitions??
+    offset: earliest
 
 storage:
   type: qdrant
@@ -12,20 +34,18 @@ storage:
     url: "http://localhost:6333"
     host: "localhost"
     port: 6334
-    collectionName: "movies"
+    collectionName: "movies2"
     vector_size: 768
     distance: cosine
     fields:
       title: string
-      year: int
-      genre: string
+      year: string
+      genres: string
       rating: float
 
 embedder:
   type: ollama
   config:
-    emdpoint: "http://127.0.0.1:7878/v1/embedding"
+    endpoint: "http://localhost:11434/api/embeddings"
     model: "nomic-embed-text"
     api_key: "YOUR_API_KEY"
-    max_response_timeout: 10s #response time in seconds
-    workers: 5
