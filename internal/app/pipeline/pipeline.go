@@ -97,14 +97,14 @@ func (p *Pipeline) runWithPerformance(ctx context.Context) error {
 	return nil
 }
 
-// all messages are processed
 func (p *Pipeline) runWithReliability(ctx context.Context) error {
 	messageCh := make(chan *types.Entity, p.cfg.Pipeline.SourceBatchSize*2)
 	embeddingCh := make(chan *types.Entity, p.cfg.Pipeline.StorageBatchSize*2)
-	wg := sync.WaitGroup{}
-	//vectors := make([]*types.Entity, 0, p.cfg.Pipeline.SourceBatchSize)
 
-	// embedder workers
+	var wg sync.WaitGroup
+	storageErrCh := make(chan error, 1)
+
+	// Embedder workers
 	for i := 0; i < p.cfg.Pipeline.EmbedderWorkersCnt; i++ {
 		wg.Add(1)
 		go func() {
@@ -112,65 +112,78 @@ func (p *Pipeline) runWithReliability(ctx context.Context) error {
 		}()
 	}
 
-	// store vectors in storage
+	// Storage processor
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+		//defer close(embeddingCh) // Закрываем только после обработки всех данных
+
 		vectors := make([]*types.Entity, 0, p.cfg.Pipeline.StorageBatchSize)
+
 		for {
 			select {
 			case <-ctx.Done():
+				// Сохраняем оставшиеся данные при shutdown
+				if len(vectors) > 0 {
+					if err := p.processStorageBatch(ctx, vectors); err != nil {
+						storageErrCh <- err
+					}
+				}
 				return
+
 			case item, ok := <-embeddingCh:
 				if !ok {
+					// Канал закрыт, сохраняем последний батч
+					if len(vectors) > 0 {
+						if err := p.processStorageBatch(ctx, vectors); err != nil {
+							storageErrCh <- err
+						}
+					}
 					return
 				}
-				vectors = append(vectors, item)
-				if len(vectors) >= p.cfg.Pipeline.StorageBatchSize {
-					fmt.Println("Store Vectors")
-					if err := p.storage.StoreBatch(ctx, vectors); err != nil {
-						log.Printf("VectorDB error: %v", err)
-						return
-					}
-					fmt.Println("Store Vectors Done")
-					err := p.source.AfterProcessHook(ctx, vectors)
-					if err != nil {
-						log.Printf("Error after process hook: %v", err)
-					}
 
-					vectors = make([]*types.Entity, 0, p.cfg.Pipeline.StorageBatchSize)
+				vectors = append(vectors, item)
+
+				if len(vectors) >= p.cfg.Pipeline.StorageBatchSize {
+					if err := p.processStorageBatch(ctx, vectors); err != nil {
+						storageErrCh <- err
+						// Не прерываем работу, только логируем ошибку
+						log.Printf("Storage batch error: %v", err)
+					}
+					vectors = vectors[:0] // Очищаем slice
 				}
 			}
 		}
 	}()
 
-	// consumer takes data from source
+	// Message producer
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer close(messageCh)
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
+
 			default:
 				if !p.running.Load() {
 					time.Sleep(200 * time.Millisecond)
 					continue
 				}
 
-				fmt.Println("Pipeline Started")
-				fmt.Println("Retrieve Data From Source")
-
 				batch, err := p.source.FetchBatch(ctx, p.cfg.Pipeline.SourceBatchSize)
 				if err != nil {
-					log.Printf("error: %v", err)
+					log.Printf("Fetch error: %v", err)
 					continue
 				}
-
-				fmt.Println("Retrieve Data From Source Done, Batch Size: ", len(batch))
 
 				if len(batch) == 0 {
-					// sleep if we don't have any messages
-					time.Sleep(100 * time.Millisecond)
-					continue
+					continue // Ждем следующей итерации
 				}
+
+				log.Printf("Fetched %d messages", len(batch))
 
 				for _, item := range batch {
 					select {
@@ -183,9 +196,38 @@ func (p *Pipeline) runWithReliability(ctx context.Context) error {
 		}
 	}()
 
-	<-ctx.Done()
-	wg.Wait()
-	close(embeddingCh)
+	// Ожидаем завершения или ошибки
+	select {
+	case <-ctx.Done():
+		log.Println("Context cancelled, waiting for workers to finish...")
+		wg.Wait()
+		return ctx.Err()
+
+	case err := <-storageErrCh:
+		log.Printf("Critical storage error: %v", err)
+		return err
+	}
+}
+
+// Вспомогательная функция для обработки батча хранилища
+func (p *Pipeline) processStorageBatch(ctx context.Context, batch []*types.Entity) error {
+	if err := p.storage.StoreBatch(ctx, batch); err != nil {
+		return fmt.Errorf("storage error: %w", err)
+	}
+
+	// Фильтруем успешно обработанные элементы (без ошибок эмбеддинга)
+	successItems := make([]*types.Entity, 0, len(batch))
+	for _, item := range batch {
+		if item.Err == nil {
+			successItems = append(successItems, item)
+		}
+	}
+
+	if len(successItems) > 0 {
+		//if err := p.source.AfterProcessHook(ctx, successItems); err != nil {
+		//	return fmt.Errorf("after process hook error: %w", err)
+		//}
+	}
 
 	return nil
 }
@@ -202,79 +244,126 @@ func (p *Pipeline) retrieveMsgs(ctx context.Context, messageCh chan *types.Entit
 			batch, err := p.source.FetchBatch(ctx, p.cfg.Pipeline.SourceBatchSize)
 			if err != nil {
 				log.Printf("Error fetching batch: %v", err)
-				continue
-			}
-			if len(batch) == 0 {
 				return nil
 			}
+			if len(batch) == 0 {
+				// Нет данных - делаем паузу перед следующей попыткой
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(1 * time.Second): // Настраиваемый интервал
+				}
+				continue
+			}
+
+			// Отправляем все элементы батча с проверкой контекста
 			for _, item := range batch {
-				messageCh <- item
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case messageCh <- item:
+				}
 			}
 		}
 	}
 }
-
 func (p *Pipeline) embedMsg(ctx context.Context, messageChIn <-chan *types.Entity, embeddingChOut chan<- *types.Entity, wg *sync.WaitGroup) {
 	defer wg.Done()
-	for item := range messageChIn {
-		vec, err := p.embedder.Embed(ctx, item.Text)
-		if err != nil {
-			log.Printf("Embedding error: %v", err) // handle error
-			//fmt.Println("Embedding error: ", err)
-			item.Err = err
-		} else {
-			//fmt.Println("COrrect Embed: ", vec)
-			item.Vector = vec
-		}
 
-		embeddingChOut <- item
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case item, ok := <-messageChIn:
+			if !ok {
+				return
+			}
+
+			vec, err := p.embedder.Embed(ctx, item.Text)
+			if err != nil {
+				//log.Printf("Embedding error: %v", err)
+				// Решаем что делать с ошибкой:
+				// 1. Пропустить: continue
+				// 2. Отправить с ошибкой:
+				item.Err = err
+			} else {
+				item.Vector = vec
+			}
+
+			// Пытаемся отправить с таймаутом
+			select {
+			case <-ctx.Done():
+				return
+			case embeddingChOut <- item:
+			}
+		}
 	}
 }
-
-func (p *Pipeline) saveMsgs(ctx context.Context, embeddingCh chan *types.Entity, wg *sync.WaitGroup) error {
+func (p *Pipeline) saveMsgs(ctx context.Context, embeddingCh <-chan *types.Entity, wg *sync.WaitGroup) error {
 	defer wg.Done()
-	defer close(embeddingCh)
 
 	var batchItems []*types.Entity
 	var batchOffsets []*types.Entity // для commit
 
-	for res := range embeddingCh {
-		batchItems = append(batchItems, res)
-
-		if len(batchItems) >= p.cfg.Pipeline.StorageBatchSize {
-			if err := p.storage.StoreBatch(ctx, batchItems); err != nil {
-				log.Printf("VectorDB error: %v", err)
-			} else {
-				sourceEntities := make([]*types.Entity, len(batchItems))
-				for _, item := range batchItems {
-					sourceEntities = append(sourceEntities, item)
-				}
-				err = p.source.AfterProcessHook(ctx, sourceEntities) // TODO handle error items
-				if err != nil {
-					return err //TODO handle error
-				}
-			}
-			batchItems = batchItems[:0]
-			batchOffsets = batchOffsets[:0]
+	// Вспомогательная функция для обработки батча
+	processBatch := func() error {
+		if len(batchItems) == 0 {
+			return nil
 		}
-	}
 
-	// all others to commit
-	if len(batchItems) > 0 { // TODO REMOVE DUPLICATE CODE
 		if err := p.storage.StoreBatch(ctx, batchItems); err != nil {
 			log.Printf("VectorDB error: %v", err)
-		} else {
-			sourceEntities := make([]*types.Entity, len(batchItems))
-			for _, item := range batchItems {
+			return err
+		}
+
+		// Правильно создаем slice для sourceEntities
+		sourceEntities := make([]*types.Entity, 0, len(batchItems))
+		for _, item := range batchItems {
+			if item.Err == nil { // Отправляем только успешные элементы
 				sourceEntities = append(sourceEntities, item)
 			}
-			err = p.source.AfterProcessHook(ctx, sourceEntities) // TODO handle error items
-			if err != nil {
-				return err
+		}
+
+		if len(sourceEntities) > 0 {
+			//if err := p.source.AfterProcessHook(ctx, sourceEntities); err != nil {
+			//	log.Printf("AfterProcessHook error: %v", err)
+			//	return err
+			//}
+		}
+
+		batchItems = batchItems[:0]
+		batchOffsets = batchOffsets[:0]
+		return nil
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Обрабатываем оставшиеся элементы при отмене
+			if err := processBatch(); err != nil {
+				log.Printf("Error processing final batch on shutdown: %v", err)
+			}
+			return ctx.Err()
+
+		case res, ok := <-embeddingCh:
+			if !ok {
+				// Канал закрыт, обрабатываем оставшийся батч
+				if err := processBatch(); err != nil {
+					return err
+				}
+				return nil
+			}
+
+			// Добавляем в батч, даже если есть ошибка (для отслеживания)
+			batchItems = append(batchItems, res)
+
+			if len(batchItems) >= p.cfg.Pipeline.StorageBatchSize {
+				if err := processBatch(); err != nil {
+					return err
+				}
 			}
 		}
 	}
-	return nil
 }
 
 func (p *Pipeline) Start() {

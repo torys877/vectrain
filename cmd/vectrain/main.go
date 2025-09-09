@@ -5,6 +5,17 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
+	"os"
+	"os/signal"
+	"runtime"
+	"runtime/pprof"
+	"runtime/trace"
+	"strconv"
+	"time"
+
 	"github.com/labstack/echo/v4"
 	"github.com/torys877/vectrain/internal/app/embedders/ollama"
 	"github.com/torys877/vectrain/internal/app/pipeline"
@@ -12,14 +23,49 @@ import (
 	"github.com/torys877/vectrain/internal/app/storages/qdrant"
 	"github.com/torys877/vectrain/internal/config"
 	routes "github.com/torys877/vectrain/internal/http"
-	"net/http"
-	"os"
-	"os/signal"
-	"strconv"
-	"time"
 )
 
 func main() {
+	// ------------------ pprof HTTP ------------------
+	go func() {
+		log.Println("pprof available at http://localhost:6060/debug/pprof/")
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
+	// ------------------ CPU Profiling ------------------
+	cpuFile, err := os.Create("cpu.prof")
+	if err != nil {
+		log.Fatalf("could not create CPU profile: %v", err)
+	}
+	defer cpuFile.Close()
+	if err := pprof.StartCPUProfile(cpuFile); err != nil {
+		log.Fatalf("could not start CPU profile: %v", err)
+	}
+	defer pprof.StopCPUProfile()
+
+	// ------------------ Runtime Trace ------------------
+	traceFile, err := os.Create("trace.out")
+	if err != nil {
+		log.Fatalf("could not create trace file: %v", err)
+	}
+	defer traceFile.Close()
+	if err := trace.Start(traceFile); err != nil {
+		log.Fatalf("could not start trace: %v", err)
+	}
+	defer trace.Stop()
+
+	// ------------------ Memory Monitoring ------------------
+	go func() {
+		var m runtime.MemStats
+		start := time.Now()
+		for range time.Tick(500 * time.Millisecond) {
+			runtime.ReadMemStats(&m)
+			fmt.Printf("Elapsed: %v, Alloc: %v KB, Sys: %v KB, NumGC: %v\n",
+				time.Since(start).Truncate(time.Millisecond),
+				m.Alloc/1024, m.Sys/1024, m.NumGC)
+		}
+	}()
+
 	fmt.Println(" === Vectrain === ")
 	configPath := flag.String("config", "", "path to config file")
 	flag.Parse()
@@ -30,7 +76,6 @@ func main() {
 	}
 
 	appConfig, err := config.LoadConfig(*configPath)
-
 	if err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)
@@ -41,14 +86,14 @@ func main() {
 		fmt.Println("Source Error:", err)
 		os.Exit(1)
 	}
-	defer kafkaSource.Close()
+	//defer kafkaSource.Close()
 
 	qdrantStorage, err := qdrant.NewQdrantClient(appConfig.Storage)
 	if err != nil {
 		fmt.Println("Storage Error:", err)
 		os.Exit(1)
 	}
-	defer qdrantStorage.Close()
+	//defer qdrantStorage.Close()
 
 	ollamaEmbedder, err := ollama.NewOllamaClient(appConfig.Embedder)
 	if err != nil {
@@ -67,6 +112,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+
 	// Start server
 	srvErrCh := make(chan error, 1)
 	go func() {
@@ -96,30 +142,21 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
 	if err := e.Shutdown(shutdownCtx); err != nil {
 		e.Logger.Fatal(err)
 	}
 
 	appPipeline.Stop()
 
-	//go func() {
-	//	if err := e.Start(":8080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
-	//		e.Logger.Fatal("shutting down the server")
-	//	}
-	//}()
+	// ------------------ Heap Profiling ------------------
+	heapFile, err := os.Create("heap.prof")
+	if err != nil {
+		log.Fatalf("could not create heap profile: %v", err)
+	}
+	defer heapFile.Close()
+	if err := pprof.WriteHeapProfile(heapFile); err != nil {
+		log.Fatalf("could not write heap profile: %v", err)
+	}
 
-	//err = appPipeline.Run(ctx)
-	//if err != nil {
-	//	fmt.Println("Pipeline Error:", err)
-	//	os.Exit(1)
-	//}
-
-	//<-ctx.Done()
-	//ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	//fmt.Println("Shutting down server...")
-	//defer cancel()
-	//if err := e.Shutdown(ctx); err != nil {
-	//	e.Logger.Fatal(err)
-	//}
+	fmt.Println("CPU profile, heap profile, and trace collected. Exiting.")
 }
