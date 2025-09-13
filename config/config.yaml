@@ -3,7 +3,7 @@ app:
   http:
     port: 8083
   pipeline:
-    mode: reliability # performance | reliability
+#    mode: reliability # performance | reliability - not valid now, for next versions
     source_batch_size: 300 # how many items load from source
     storage_batch_size: 400 # how many items save in batch in storage
     embedder_workers_cnt: 10 # how many embedder workers can work simultaneously

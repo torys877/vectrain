@@ -14,6 +14,8 @@ func (k *Kafka) AfterProcessHook(ctx context.Context, msgs []*types.Entity) erro
 }
 
 func (k *Kafka) commitOffsets(items []*types.Entity) error {
+	return nil
+
 	if len(items) == 0 || k.consumer == nil {
 		return fmt.Errorf("no items to commit, or consumer is nil")
 	}

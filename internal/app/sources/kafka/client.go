@@ -45,19 +45,19 @@ func (k *Kafka) Connect() error {
 		"auto.offset.reset": k.cfg.Offset,
 	})
 	if err != nil {
-		log.Fatalf("Failed to create consumer: %s", err)
+		log.Printf("failed to create consumer: %s", err)
 		return err
 	}
 	k.consumer = consumer
 
 	if err = consumer.SubscribeTopics([]string{k.topic}, nil); err != nil {
-		log.Fatalf("Failed to subscribe to topic: %s", err)
+		log.Printf("Failed to subscribe to topic: %s", err)
 		return err
 	}
 
 	md, err := consumer.GetMetadata(&k.topic, false, 5000) // FIXME make timeout configurable
 	if err != nil {
-		log.Fatalf("Failed to get metadata: %v", err)
+		log.Printf("Failed to get metadata: %v", err)
 	}
 	t, ok := md.Topics[k.topic]
 	if !ok {
