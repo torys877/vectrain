@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 func (o *Ollama) Embed(ctx context.Context, message string) ([]float32, error) {
@@ -34,12 +35,15 @@ func (o *Ollama) Embed(ctx context.Context, message string) ([]float32, error) {
 	client := &http.Client{
 		//Timeout: o.MaxResponseTimeoutDuration, // TODO
 	}
+	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error sending request: %v", err)
 	}
 	defer resp.Body.Close()
 
+	duration := time.Since(start)
+	fmt.Printf("Embed Request took %v\n", duration)
 	// Read response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -42,6 +42,7 @@ func (k *Kafka) FetchBatch(ctx context.Context, size int) ([]*types.Entity, erro
 			return res, ctx.Err()
 		default:
 			fmt.Println("fetching")
+			start := time.Now()
 			msg, err := k.consumer.ReadMessage(500 * time.Millisecond)
 			if err != nil {
 				var kafkaErr kafka.Error
@@ -51,6 +52,9 @@ func (k *Kafka) FetchBatch(ctx context.Context, size int) ([]*types.Entity, erro
 				}
 				return res, err
 			}
+
+			duration := time.Since(start)
+			fmt.Printf("Source Request took %v\n", duration)
 
 			var embedResp types.Entity
 			if err := json.Unmarshal(msg.Value, &embedResp); err != nil {

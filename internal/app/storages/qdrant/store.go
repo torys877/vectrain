@@ -7,6 +7,7 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 	"github.com/torys877/vectrain/pkg/types"
 	"strconv"
+	"time"
 )
 
 func (q *Qdrant) StoreOne(ctx context.Context, vector *types.Entity) error {
@@ -86,8 +87,11 @@ func (q *Qdrant) StoreBatch(ctx context.Context, vectors []*types.Entity) error 
 		CollectionName: q.collectionName,
 		Points:         points,
 	}
-
+	start := time.Now()
 	res, err := q.client.GetPointsClient().Upsert(ctx, upsertPoints) // TODO check dublicates, because they will be overwritten
+	duration := time.Since(start)
+	fmt.Printf("Storage Request took %v\n", duration)
+
 	fmt.Println("STORE RESULT:")
 	fmt.Println("error:")
 	fmt.Println(err)

@@ -14,7 +14,8 @@ import (
 // ----------------- Pipeline -----------------
 
 type Pipeline struct {
-	mode     string
+	mode string
+	//cfg      *config.Config
 	cfg      *config.AppConfig
 	source   types.Source
 	embedder types.Embedder
@@ -107,6 +108,7 @@ func (p *Pipeline) runWithReliability(ctx context.Context) error {
 	for i := 0; i < p.cfg.Pipeline.EmbedderWorkersCnt; i++ {
 		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			p.embedMsg(ctx, messageCh, embeddingCh, &wg)
 		}()
 	}
@@ -115,12 +117,14 @@ func (p *Pipeline) runWithReliability(ctx context.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer close(embeddingCh) // Закрываем только после обработки всех данных
 
 		vectors := make([]*types.Entity, 0, p.cfg.Pipeline.StorageBatchSize)
 
 		for {
 			select {
 			case <-ctx.Done():
+				// Сохраняем оставшиеся данные при shutdown
 				if len(vectors) > 0 {
 					if err := p.processStorageBatch(ctx, vectors); err != nil {
 						storageErrCh <- err
@@ -130,6 +134,7 @@ func (p *Pipeline) runWithReliability(ctx context.Context) error {
 
 			case item, ok := <-embeddingCh:
 				if !ok {
+					// Канал закрыт, сохраняем последний батч
 					if len(vectors) > 0 {
 						if err := p.processStorageBatch(ctx, vectors); err != nil {
 							storageErrCh <- err
@@ -143,6 +148,7 @@ func (p *Pipeline) runWithReliability(ctx context.Context) error {
 				if len(vectors) >= p.cfg.Pipeline.StorageBatchSize {
 					if err := p.processStorageBatch(ctx, vectors); err != nil {
 						storageErrCh <- err
+						// Не прерываем работу, только логируем ошибку
 						log.Printf("Storage batch error: %v", err)
 					}
 					vectors = vectors[:0] // Очищаем slice
@@ -219,9 +225,9 @@ func (p *Pipeline) processStorageBatch(ctx context.Context, batch []*types.Entit
 	}
 
 	if len(successItems) > 0 {
-		//if err := p.source.AfterProcessHook(ctx, successItems); err != nil {
-		//	return fmt.Errorf("after process hook error: %w", err)
-		//}
+		if err := p.source.AfterProcessHook(ctx, successItems); err != nil {
+			return fmt.Errorf("after process hook error: %w", err)
+		}
 	}
 
 	return nil
@@ -276,7 +282,7 @@ func (p *Pipeline) embedMsg(ctx context.Context, messageChIn <-chan *types.Entit
 
 			vec, err := p.embedder.Embed(ctx, item.Text)
 			if err != nil {
-				//log.Printf("Embedding error: %v", err)
+				log.Printf("Embedding error: %v", err)
 				// Решаем что делать с ошибкой:
 				// 1. Пропустить: continue
 				// 2. Отправить с ошибкой:
@@ -320,10 +326,10 @@ func (p *Pipeline) saveMsgs(ctx context.Context, embeddingCh <-chan *types.Entit
 		}
 
 		if len(sourceEntities) > 0 {
-			//if err := p.source.AfterProcessHook(ctx, sourceEntities); err != nil {
-			//	log.Printf("AfterProcessHook error: %v", err)
-			//	return err
-			//}
+			if err := p.source.AfterProcessHook(ctx, sourceEntities); err != nil {
+				log.Printf("AfterProcessHook error: %v", err)
+				return err
+			}
 		}
 
 		batchItems = batchItems[:0]

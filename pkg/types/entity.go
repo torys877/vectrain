@@ -13,9 +13,3 @@ type ErrorEntity struct {
 	Entity
 	Err error
 }
-
-//type VectorEntity struct {
-//	Entity
-//	Vector []float32
-//	Err    error
-//}
