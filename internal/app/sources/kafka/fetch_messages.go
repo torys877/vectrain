@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/google/uuid"
 	"github.com/torys877/vectrain/pkg/types"
 	"time"
 )
@@ -41,7 +40,6 @@ func (k *Kafka) FetchBatch(ctx context.Context, size int) ([]*types.Entity, erro
 		case <-ctx.Done():
 			return res, ctx.Err()
 		default:
-			fmt.Println("fetching")
 			start := time.Now()
 			msg, err := k.consumer.ReadMessage(500 * time.Millisecond)
 			if err != nil {
@@ -61,11 +59,14 @@ func (k *Kafka) FetchBatch(ctx context.Context, size int) ([]*types.Entity, erro
 				return nil, fmt.Errorf("error unmarshaling response: %v, body: %s", err, string(msg.Value))
 			}
 
-			// TODO CHECK itemDatas!!! for duplicate items
-			embedResp.ID, err = uuid.Parse(embedResp.UUID)
-			if err != nil {
-				fmt.Printf("error parsing UUID: %v", err) // print error
-				embedResp.ID = uuid.New()
+			//embedResp.ID, err = uuid.Parse(embedResp.UUID)
+			//if err != nil {
+			//	fmt.Printf("error parsing UUID: %v", err) // print error
+			//	embedResp.ID = uuid.New()
+			//}
+
+			if len(embedResp.ID) == 0 { // need to handle ID correctly
+				embedResp.ID = embedResp.UUID
 			}
 
 			k.itemDatas[embedResp.ID] = ItemData{

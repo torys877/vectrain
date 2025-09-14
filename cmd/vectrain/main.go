@@ -31,13 +31,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	monitoring.RunPrometheus(monitoring.PrometheusConfig{Active: *metricsFlag, Port: *metricsPort})
-
 	appConfig, err := config.LoadConfig(*configPath)
 	if err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)
 	}
+
+	monitoring.RunPrometheus(monitoring.PrometheusConfig{
+		Active: appConfig.App.Monitoring.Enabled,
+		Port:   appConfig.App.Monitoring.Port})
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
 	appPipeline, err := app.Pipeline(*appConfig)
 	if err != nil {
@@ -51,9 +56,6 @@ func main() {
 		fmt.Printf("Routes not set, check configuration: %v\n", err)
 		return
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
 
 	// Start server
 	srvErrCh := make(chan error, 1)

@@ -10,11 +10,12 @@ import (
 )
 
 type Kafka struct {
-	name      string
-	topic     string
-	groupId   string
-	consumer  *kafka.Consumer
-	itemDatas map[[16]byte]ItemData
+	name     string
+	topic    string
+	groupId  string
+	consumer *kafka.Consumer
+	//itemDatas map[[16]byte]ItemData
+	itemDatas map[string]ItemData
 	cfg       config.KafkaConfig
 }
 
@@ -33,7 +34,7 @@ func NewKafkaClient(cfg config.Source) (*Kafka, error) {
 		name:      "kafka",
 		topic:     kafkaConfig.Topic,
 		groupId:   kafkaConfig.GroupID,
-		itemDatas: make(map[[16]byte]ItemData),
+		itemDatas: make(map[string]ItemData),
 		cfg:       kafkaConfig,
 	}, nil
 }

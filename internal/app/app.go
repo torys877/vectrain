@@ -2,15 +2,15 @@ package app
 
 import (
 	"fmt"
-	"github.com/torys877/vectrain/internal/app/embedders/ollama"
+	"github.com/torys877/vectrain/internal/app/embedders"
 	"github.com/torys877/vectrain/internal/app/pipeline"
-	"github.com/torys877/vectrain/internal/app/sources/kafka"
+	"github.com/torys877/vectrain/internal/app/sources"
 	"github.com/torys877/vectrain/internal/app/storages"
 	"github.com/torys877/vectrain/internal/config"
 )
 
 func Pipeline(cfg config.Config) (*pipeline.Pipeline, error) {
-	source, err := kafka.NewKafkaClient(cfg.Source)
+	source, err := sources.Source(cfg.Source)
 	if err != nil {
 		fmt.Println("Source Error:", err)
 		return nil, err
@@ -25,7 +25,7 @@ func Pipeline(cfg config.Config) (*pipeline.Pipeline, error) {
 		return nil, err
 	}
 
-	embedder, err := ollama.NewOllamaClient(cfg.Embedder)
+	embedder, err := embedders.Embedder(cfg.Embedder)
 	if err != nil {
 		fmt.Println("Embedder Error:", err)
 		return nil, err

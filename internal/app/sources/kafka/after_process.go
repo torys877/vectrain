@@ -21,7 +21,8 @@ func (k *Kafka) commitOffsets(items []*types.Entity) error {
 	}
 
 	offsets := make([]kafka.TopicPartition, 0, len(items))
-	var itemsToRemove [][16]byte
+	//var itemsToRemove [][16]byte
+	var itemsToRemove []string
 
 	for _, item := range items {
 		offsets = append(offsets, kafka.TopicPartition{

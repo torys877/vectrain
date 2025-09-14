@@ -27,8 +27,7 @@ type KafkaConfig struct {
 	Brokers []string `yaml:"brokers" validate:"required,min=1"`
 	Topic   string   `yaml:"topic" validate:"required"`
 	GroupID string   `yaml:"group_id" validate:"required"`
-	//Endpoint string   `yaml:"endpoint" validate:"required,url"`
-	Offset string `yaml:"offset" validate:"required,oneof=earliest latest"`
+	Offset  string   `yaml:"offset" validate:"required,oneof=earliest latest"`
 	//OffsetNumber string   `yaml:"offset_number"`
 }
 
