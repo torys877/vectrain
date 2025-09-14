@@ -26,3 +26,5 @@
 
 # custom
 /wip_data/
+/deploy/docker/qdrant_storage/
+/deploy/docker/data/
