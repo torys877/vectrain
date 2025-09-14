@@ -23,24 +23,35 @@ var zeroValues = map[string]*qdrant.Value{
 }
 
 type Qdrant struct {
+	client         *qdrant.Client
+	cfg            *QdrantConfig
 	name           string
 	collectionName string
-	client         *qdrant.Client
 	payloadFields  map[string]string
-	cfg            config.QdrantConfig
 }
 
-func NewQdrantClient(cfg config.Storage) (*Qdrant, error) {
-	qdrantConfig, ok := cfg.(config.QdrantConfig)
-	if !ok {
-		return nil, fmt.Errorf("invalid config type: expected QdrantConfig")
+type QdrantConfig struct {
+	URL            string            `yaml:"url" validate:"required,url"`
+	Host           string            `yaml:"host" validate:"required"`
+	VectorSize     uint64            `yaml:"vector_size" validate:"required"`
+	Port           int               `yaml:"port" validate:"required"`
+	CollectionName string            `yaml:"collectionName" validate:"required"`
+	Distance       string            `yaml:"distance" validate:"required,oneof=cosine euclid dot"`
+	Fields         map[string]string `yaml:"fields" validate:"required"`
+}
+
+func NewQdrantClient(cfg types.TypedConfig) (*Qdrant, error) {
+	qc, err := config.ParseConfig[QdrantConfig](cfg)
+
+	if err != nil {
+		return nil, fmt.Errorf("invalid config, type: %s, err: %w", cfg.Type(), err)
 	}
 
 	return &Qdrant{
 		name:           "qdrant",
-		collectionName: qdrantConfig.CollectionName,
-		payloadFields:  qdrantConfig.Fields,
-		cfg:            qdrantConfig,
+		collectionName: qc.CollectionName,
+		payloadFields:  qc.Fields,
+		cfg:            qc,
 	}, nil
 }
 func (q *Qdrant) Connect() error {

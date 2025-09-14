@@ -10,32 +10,39 @@ import (
 )
 
 type Kafka struct {
-	name     string
-	topic    string
-	groupId  string
-	consumer *kafka.Consumer
-	//itemDatas map[[16]byte]ItemData
+	consumer  *kafka.Consumer
+	cfg       *KafkaConfig
 	itemDatas map[string]ItemData
-	cfg       config.KafkaConfig
+	name      string
+	topic     string
+	groupId   string
+}
+
+type KafkaConfig struct {
+	Brokers []string `yaml:"brokers" validate:"required,min=1"`
+	Topic   string   `yaml:"topic" validate:"required"`
+	GroupID string   `yaml:"group_id" validate:"required"`
+	Offset  string   `yaml:"offset" validate:"required,oneof=earliest latest"`
+	//OffsetNumber string   `yaml:"offset_number"`
 }
 
 type ItemData struct {
-	Partition int32
 	Offset    int64
+	Partition int32
 }
 
-func NewKafkaClient(cfg config.Source) (*Kafka, error) {
-	kafkaConfig, ok := cfg.(config.KafkaConfig)
-	if !ok {
-		return nil, fmt.Errorf("invalid config type: expected KafkaConfig")
+func NewKafkaClient(cfg types.TypedConfig) (*Kafka, error) {
+	kc, err := config.ParseConfig[KafkaConfig](cfg)
+	if err != nil {
+		return nil, fmt.Errorf("invalid config, type: %s, err: %w", cfg.Type(), err)
 	}
 
 	return &Kafka{
-		name:      "kafka",
-		topic:     kafkaConfig.Topic,
-		groupId:   kafkaConfig.GroupID,
+		name:      cfg.Type(),
+		topic:     kc.Topic,
+		groupId:   kc.GroupID,
 		itemDatas: make(map[string]ItemData),
-		cfg:       kafkaConfig,
+		cfg:       kc,
 	}, nil
 }
 

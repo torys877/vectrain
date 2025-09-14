@@ -22,8 +22,6 @@ func main() {
 	fmt.Println(" === Vectrain === ")
 
 	configPath := flag.String("config", "", "path to config file")
-	metricsFlag := flag.Bool("metrics", false, "flag to enable metrics(prometheus)")
-	metricsPort := flag.Int("metrics-port", 9090, "port for metrics, default: 9090")
 	flag.Parse()
 	fmt.Println("configPath:", *configPath)
 	if *configPath == "" {
