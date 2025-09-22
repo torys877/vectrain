@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+func (k *Kafka) Fetch(ctx context.Context, size int) ([]*types.Entity, error) {
+	if size == 1 {
+		entity, err := k.FetchOne(ctx)
+		return []*types.Entity{entity}, err
+	}
+
+	return k.FetchBatch(ctx, size)
+}
+
 func (k *Kafka) FetchOne(ctx context.Context) (*types.Entity, error) {
 	for {
 		select {
@@ -58,12 +67,6 @@ func (k *Kafka) FetchBatch(ctx context.Context, size int) ([]*types.Entity, erro
 			if err := json.Unmarshal(msg.Value, &embedResp); err != nil {
 				return nil, fmt.Errorf("error unmarshaling response: %v, body: %s", err, string(msg.Value))
 			}
-
-			//embedResp.ID, err = uuid.Parse(embedResp.UUID)
-			//if err != nil {
-			//	fmt.Printf("error parsing UUID: %v", err) // print error
-			//	embedResp.ID = uuid.New()
-			//}
 
 			if len(embedResp.ID) == 0 { // need to handle ID correctly
 				embedResp.ID = embedResp.UUID

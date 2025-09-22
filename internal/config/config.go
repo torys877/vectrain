@@ -1,6 +1,7 @@
 package config
 
 import (
+	"flag"
 	"fmt"
 	"github.com/torys877/vectrain/pkg/types"
 	"os"
@@ -52,10 +53,17 @@ type Config struct {
 	Storage  types.TypedConfig `yaml:"storage"`
 }
 
-func LoadConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+func LoadConfig() (*Config, error) {
+	configPath := flag.String("config", "", "path to config file")
+	flag.Parse()
+
+	if *configPath == "" {
+		return nil, fmt.Errorf("missing required --config argument")
+	}
+
+	data, err := os.ReadFile(*configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config: %w", err)
+		return nil, fmt.Errorf("failed to read config, configPath: %s, err: %w", *configPath, err)
 	}
 
 	config := &Config{}

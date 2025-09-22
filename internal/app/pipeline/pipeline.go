@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"github.com/torys877/vectrain/internal/config"
+	"github.com/torys877/vectrain/internal/infra/logger"
 	"github.com/torys877/vectrain/internal/utils"
 	"github.com/torys877/vectrain/pkg/types"
-	"log"
+	"go.uber.org/zap"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,7 +34,6 @@ type EmbeddingItem struct {
 func NewPipeline(opts ...Option) *Pipeline {
 	p := &Pipeline{}
 	p.running.Store(false)
-	//p.mode = cfg.App.Pipeline.Mode
 
 	for _, opt := range opts {
 		opt(p)
@@ -43,13 +43,11 @@ func NewPipeline(opts ...Option) *Pipeline {
 }
 
 func (p *Pipeline) Run(ctx context.Context) error {
-	fmt.Println("Run pipeline")
-	fmt.Println("Validate pipeline configuration")
+	logger.Info("running pipeline")
 	if err := p.validate(); err != nil {
 		return err
 	}
 
-	fmt.Println("Prepare pipeline")
 	if err := p.prepare(); err != nil {
 		return err
 	}
@@ -94,17 +92,18 @@ func (p *Pipeline) runPipeline(ctx context.Context) error {
 	// wait for workers to finish
 	select {
 	case <-ctx.Done():
-		log.Println("Context cancelled, waiting for workers to finish...")
+		logger.Info("context cancelled, waiting for workers to finish...")
 		wg.Wait()
 		return ctx.Err()
 
 	case err := <-storageErrCh:
-		log.Printf("Critical storage error: %v", err)
+		// critical error, stop pipeline
 		return err
 	}
 }
 
 func (p *Pipeline) validate() error {
+	logger.Info("validate pipeline configuration")
 	if p.cfg == nil {
 		return fmt.Errorf("configuration is nil")
 	}
@@ -121,17 +120,18 @@ func (p *Pipeline) validate() error {
 }
 
 func (p *Pipeline) prepare() error {
-	fmt.Println("Source Connecting...")
+	logger.Info("prepare pipeline")
+	logger.Info("source connecting...")
 	if err := p.source.Connect(); err != nil {
 		return fmt.Errorf("source connect failed: %w", err)
 	}
-	fmt.Println("Source Connected")
+	logger.Info("source connected")
 
-	fmt.Println("Storage Connecting...")
+	logger.Info("storage connecting...")
 	if err := p.storage.Connect(); err != nil {
 		return fmt.Errorf("storage connect failed: %w", err)
 	}
-	fmt.Println("Storage Connected")
+	logger.Info("storage connected")
 
 	return nil
 }
@@ -155,14 +155,18 @@ func (p *Pipeline) consume(
 				continue
 			}
 
-			batch, err := p.source.FetchBatch(ctx, p.cfg.Pipeline.SourceBatchSize) // handle error, stop?
+			batch, err := p.source.Fetch(ctx, p.cfg.Pipeline.SourceBatchSize) // handle error, stop?
 			if err != nil {
-				log.Printf("Fetch error: %v", err)
+				logger.Error("fetch error", zap.Error(err))
 				continue
 			}
 
 			if len(batch) == 0 {
 				continue
+			}
+
+			if err = p.source.BeforeProcessHook(ctx, batch); err != nil {
+				logger.Warn("before process hook error", zap.Error(err)) // not critical, continue
 			}
 
 			for _, item := range batch {
@@ -209,7 +213,6 @@ func (p *Pipeline) store(ctx context.Context,
 			if len(vectors) >= p.cfg.Pipeline.StorageBatchSize {
 				if err := p.storeBatch(ctx, vectors); err != nil {
 					storageErrCh <- err
-					log.Printf("storage batch error: %v", err)
 				}
 				vectors = vectors[:0]
 			}
@@ -218,7 +221,7 @@ func (p *Pipeline) store(ctx context.Context,
 }
 
 func (p *Pipeline) storeBatch(ctx context.Context, batch []*types.Entity) error {
-	if err := p.storage.StoreBatch(ctx, batch); err != nil {
+	if err := p.storage.Store(ctx, batch); err != nil {
 		return fmt.Errorf("storage error: %w", err)
 	}
 
@@ -260,7 +263,6 @@ func (p *Pipeline) embed(
 				item.Vector = vec
 			}
 
-			// Пытаемся отправить с таймаутом
 			select {
 			case <-ctx.Done():
 				return
@@ -271,12 +273,12 @@ func (p *Pipeline) embed(
 }
 
 func (p *Pipeline) Start() {
-	fmt.Println("Pipeline Starting...")
+	logger.Info("starting pipeline...")
 	p.running.Store(true)
 }
 
 func (p *Pipeline) Stop() {
-	fmt.Println("Pipeline Stopping...")
+	logger.Info("stopping pipeline...")
 	p.running.Store(false)
 }
 

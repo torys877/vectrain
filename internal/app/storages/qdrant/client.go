@@ -5,7 +5,6 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 	"github.com/torys877/vectrain/internal/config"
 	"github.com/torys877/vectrain/pkg/types"
-	"io"
 )
 
 const (
@@ -81,4 +80,3 @@ func (q *Qdrant) Name() string {
 }
 
 var _ types.Storage = &Qdrant{}
-var _ io.Closer = &Qdrant{}

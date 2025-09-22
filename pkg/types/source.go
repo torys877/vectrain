@@ -8,8 +8,8 @@ import (
 type Source interface {
 	Name() string
 	Connect() error
-	FetchOne(ctx context.Context) (*Entity, error)
-	FetchBatch(ctx context.Context, size int) ([]*Entity, error)
+	Fetch(ctx context.Context, size int) ([]*Entity, error)
+	BeforeProcessHook(ctx context.Context, entities []*Entity) error
 	AfterProcessHook(ctx context.Context, entities []*Entity) error
 	io.Closer
 }

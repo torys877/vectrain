@@ -7,46 +7,9 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 	"github.com/torys877/vectrain/pkg/types"
 	"strconv"
-	"time"
 )
 
-func (q *Qdrant) StoreOne(ctx context.Context, vector *types.Entity) error {
-	qdrantPayload, err := q.getPayload(vector.Payload)
-
-	if err != nil {
-		return fmt.Errorf("failed to get payload: %v", err)
-	}
-
-	// добавляем точку
-	points := &qdrant.UpsertPoints{
-		CollectionName: q.collectionName,
-		Points: []*qdrant.PointStruct{
-			{
-				Id: &qdrant.PointId{
-					PointIdOptions: &qdrant.PointId_Uuid{
-						Uuid: uuid.New().String(),
-					},
-				},
-				Vectors: &qdrant.Vectors{
-					VectorsOptions: &qdrant.Vectors_Vector{
-						Vector: &qdrant.Vector{
-							Data: vector.Vector,
-						},
-					},
-				},
-				Payload: qdrantPayload,
-			},
-		},
-	}
-
-	_, err = q.client.GetPointsClient().Upsert(ctx, points)
-	if err != nil {
-		return fmt.Errorf("failed to upsert point: %v", err)
-	}
-	return nil
-}
-
-func (q *Qdrant) StoreBatch(ctx context.Context, vectors []*types.Entity) error {
+func (q *Qdrant) Store(ctx context.Context, vectors []*types.Entity) error {
 	if len(vectors) == 0 {
 		return nil
 	}
@@ -87,16 +50,8 @@ func (q *Qdrant) StoreBatch(ctx context.Context, vectors []*types.Entity) error 
 		CollectionName: q.collectionName,
 		Points:         points,
 	}
-	start := time.Now()
-	res, err := q.client.GetPointsClient().Upsert(ctx, upsertPoints) // TODO check dublicates, because they will be overwritten
-	duration := time.Since(start)
-	fmt.Printf("Storage Request took %v\n", duration)
 
-	fmt.Println("STORE RESULT:")
-	fmt.Println("error:")
-	fmt.Println(err)
-	fmt.Println("result:")
-	fmt.Println(res.String())
+	_, err = q.client.GetPointsClient().Upsert(ctx, upsertPoints) // TODO check res status, check dublicates, because they will be overwritten
 
 	if err != nil {
 		return fmt.Errorf("failed to upsert batch points: %v", err)

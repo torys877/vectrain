@@ -3,6 +3,7 @@ package factory
 import (
 	"fmt"
 	"github.com/torys877/vectrain/internal/app/embedders/ollama"
+	"github.com/torys877/vectrain/internal/app/sources/http"
 	"github.com/torys877/vectrain/internal/app/sources/kafka"
 	vecQdrant "github.com/torys877/vectrain/internal/app/storages/qdrant"
 	"github.com/torys877/vectrain/internal/constants"
@@ -13,6 +14,8 @@ func NewSource(cfg types.TypedConfig) (types.Source, error) {
 	switch cfg.Type() {
 	case constants.SourceKafka:
 		return kafka.NewKafkaClient(cfg)
+	case constants.SourceHttp:
+		return http.NewHttpClient(cfg)
 	default:
 		return nil, fmt.Errorf("invalid source type: %s", cfg.Type())
 	}

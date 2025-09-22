@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"github.com/torys877/vectrain/internal/app"
+	"github.com/torys877/vectrain/internal/config"
+	routes "github.com/torys877/vectrain/internal/http"
+	"github.com/torys877/vectrain/internal/infra/logger"
 	"github.com/torys877/vectrain/internal/infra/monitoring"
+	"go.uber.org/zap"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,79 +17,106 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/torys877/vectrain/internal/config"
-	routes "github.com/torys877/vectrain/internal/http"
 )
 
 func main() {
-	fmt.Println(" === Vectrain === ")
+	defer logger.Close()
+	logger.Info("=== Vectrain ===")
 
-	configPath := flag.String("config", "", "path to config file")
-	flag.Parse()
-	fmt.Println("configPath:", *configPath)
-	if *configPath == "" {
-		fmt.Println("Error: --config argument is required")
-		os.Exit(1)
-	}
+	// --- Load configuration ---
 
-	appConfig, err := config.LoadConfig(*configPath)
+	appConfig, err := config.LoadConfig()
 	if err != nil {
-		fmt.Println("Error:", err)
+		logger.Error("failed to load config",
+			zap.Error(err),
+		)
 		os.Exit(1)
 	}
 
+	// --- Start Prometheus monitoring ---
 	monitoring.RunPrometheus(monitoring.PrometheusConfig{
 		Active: appConfig.App.Monitoring.Enabled,
-		Port:   appConfig.App.Monitoring.Port})
+		Port:   appConfig.App.Monitoring.Port,
+	})
 
+	// --- Setup context for OS signals ---
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
+	// --- Create pipeline ---
 	appPipeline, err := app.Pipeline(*appConfig)
 	if err != nil {
-		fmt.Printf("Pipeline not created, check configuration: %v\n", err)
-		return
+		logger.Error("pipeline creation failed, check configuration",
+			zap.Error(err),
+			zap.Any("config", appConfig),
+		)
+		os.Exit(1)
 	}
 
+	// --- Setup HTTP server ---
 	e := echo.New()
-	err = routes.SetupRoutes(e, appConfig, appPipeline)
-	if err != nil {
-		fmt.Printf("Routes not set, check configuration: %v\n", err)
-		return
+	if err := routes.SetupRoutes(e, appConfig, appPipeline); err != nil {
+		logger.Error("routes setup failed, check configuration",
+			zap.Error(err),
+			zap.Any("config", appConfig),
+		)
+		os.Exit(1)
 	}
 
-	// Start server
+	// --- Channels for errors ---
 	srvErrCh := make(chan error, 1)
+	pipelineErrCh := make(chan error, 1)
+
+	// --- Start HTTP server ---
 	go func() {
-		if err := e.Start(":" + strconv.Itoa(appConfig.App.Http.Port)); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		addr := ":" + strconv.Itoa(appConfig.App.Http.Port)
+		if err := e.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server error", zap.Error(err))
 			srvErrCh <- err
 		}
 		close(srvErrCh)
 	}()
 
-	// Start pipeline
-	pipelineErrCh := make(chan error, 1)
+	// --- Start pipeline ---
 	go func() {
 		if err := appPipeline.Run(ctx); err != nil {
-			pipelineErrCh <- err
+			pipelineErrCh <- fmt.Errorf("pipeline run error: %w", err)
 		}
 		close(pipelineErrCh)
 	}()
 
-	select {
-	case <-ctx.Done():
-		fmt.Println("Signal received, shutting down...")
-	case err := <-srvErrCh:
-		fmt.Println("Server error:", err)
-	case err := <-pipelineErrCh:
-		fmt.Println("Pipeline error:", err)
+	// --- Wait for signal or errors ---
+	shutdownInitiated := false
+	for !shutdownInitiated {
+		select {
+		case <-ctx.Done():
+			logger.Info("signal received, shutting down...")
+			shutdownInitiated = true
+		case err, ok := <-srvErrCh:
+			if ok && err != nil {
+				logger.Error("server encountered an error", zap.Error(err))
+			}
+			shutdownInitiated = true
+		case err, ok := <-pipelineErrCh:
+			if ok && err != nil {
+				logger.Error("pipeline encountered an error", zap.Error(err))
+			}
+			shutdownInitiated = true
+		}
 	}
 
+	// --- Stop pipeline first ---
+	logger.Info("pipeline stopping")
+	appPipeline.Stop()
+
+	// --- Shutdown HTTP server with timeout ---
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := e.Shutdown(shutdownCtx); err != nil {
-		e.Logger.Fatal(err)
+		logger.Error("HTTP server shutdown error", zap.Error(err))
+	} else {
+		logger.Info("HTTP server stopped")
 	}
 
-	appPipeline.Stop()
+	logger.Info("application shutdown complete")
 }
