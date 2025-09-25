@@ -97,9 +97,9 @@ go build -o vectrain cmd/vectrain/main.go
 
 The service exposes HTTP endpoints for controlling the pipeline and retrieving information:
 
-- `GET /health`: Check service health
-- `POST /start`: Start workflow
-- `POST /stop`: Stop workflow
+- `GET /api/health`: Check service health
+- `POST /api/start`: Start workflow
+- `POST /api/stop`: Stop workflow
 
 Each component is pluggable and configurable through the YAML configuration file.
 
