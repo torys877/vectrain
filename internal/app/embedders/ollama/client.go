@@ -15,7 +15,6 @@ type Ollama struct {
 
 type OllamaConfig struct {
 	Model    string `yaml:"model" validate:"required"`
-	APIKey   string `yaml:"api_key" validate:"required"`
 	Endpoint string `yaml:"endpoint" validate:"required,url"`
 }
 

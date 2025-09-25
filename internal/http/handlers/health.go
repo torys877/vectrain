@@ -15,14 +15,6 @@ type HealthResponseDetails struct {
 	Database    string `json:"database"`
 }
 
-// HealthCheck godoc
-// @Summary      Health check
-// @Description  Returns the health status of the application and its database connection
-// @Tags         system
-// @Produce      json
-// @Success      200 {object} HealthResponse "Healthy"
-// @Failure      503 {object} HealthResponse "Unhealthy"
-// @Router       /api/health [get]
 func HealthCheck() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		return c.JSON(http.StatusOK, &HealthResponse{

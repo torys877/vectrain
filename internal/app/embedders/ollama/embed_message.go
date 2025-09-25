@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/torys877/vectrain/internal/infra/logger"
 	"io"
 	"net/http"
 	"time"
@@ -43,7 +44,7 @@ func (o *Ollama) Embed(ctx context.Context, message string) ([]float32, error) {
 	defer resp.Body.Close()
 
 	duration := time.Since(start)
-	fmt.Printf("Embed Request took %v\n", duration)
+	logger.Info(fmt.Sprintf("Embed Request took %v\n", duration))
 	// Read response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

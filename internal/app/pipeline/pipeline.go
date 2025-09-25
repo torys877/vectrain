@@ -125,13 +125,13 @@ func (p *Pipeline) prepare() error {
 	if err := p.source.Connect(); err != nil {
 		return fmt.Errorf("source connect failed: %w", err)
 	}
-	logger.Info("source connected")
+	logger.Info(fmt.Sprintf("%s source connected", p.source.Name()))
 
 	logger.Info("storage connecting...")
 	if err := p.storage.Connect(); err != nil {
 		return fmt.Errorf("storage connect failed: %w", err)
 	}
-	logger.Info("storage connected")
+	logger.Info(fmt.Sprintf("%s storage connected", p.storage.Name()))
 
 	return nil
 }

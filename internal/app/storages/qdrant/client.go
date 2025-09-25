@@ -30,10 +30,9 @@ type Qdrant struct {
 }
 
 type QdrantConfig struct {
-	URL            string            `yaml:"url" validate:"required,url"`
 	Host           string            `yaml:"host" validate:"required"`
-	VectorSize     uint64            `yaml:"vector_size" validate:"required"`
 	Port           int               `yaml:"port" validate:"required"`
+	VectorSize     uint64            `yaml:"vector_size" validate:"required"`
 	CollectionName string            `yaml:"collectionName" validate:"required"`
 	Distance       string            `yaml:"distance" validate:"required,oneof=cosine euclid dot"`
 	Fields         map[string]string `yaml:"fields" validate:"required"`

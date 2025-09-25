@@ -86,12 +86,24 @@ func (h *HttpClient) sendRoute(c echo.Context) error {
 		})
 	}
 
+	// Check if request text is empty
+	if entity.Text == "" {
+		errorMessage := "Empty request text"
+		c.Logger().Warn(errorMessage)
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error":   "empty_request",
+			"message": errorMessage,
+		})
+	}
+
 	select {
 	case h.entities <- &entity:
-		return c.JSON(http.StatusAccepted, map[string]string{
+		fmt.Printf("ACCEPTED, %d\n", len(h.entities))
+		return c.JSON(http.StatusOK, map[string]string{
 			"status": "queued",
 		})
 	default:
+		fmt.Printf("Too many, %d\n", len(h.entities))
 		return c.JSON(http.StatusTooManyRequests, map[string]string{
 			"error":   "queue_full",
 			"message": "The processing queue is full. Please try again later.",
