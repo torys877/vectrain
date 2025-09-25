@@ -1,0 +1,46 @@
+app:
+  name: embedding-service
+  http:
+    port: 8083 # Port where the pipeline API runs
+  pipeline:
+    source_batch_size: 300   # Number of items to load from the source before sending to the embedder
+    storage_batch_size: 400  # Number of items to save in a single batch to storage
+    embedder_workers_cnt: 5  # Number of embedder workers running in parallel
+    source_response_timeout: 2s   # Timeout for source responses
+    storage_response_timeout: 2s  # Timeout for storage responses
+    embedder_response_timeout: 2s # Timeout for embedder responses
+  # skip_embedder_errors: true    # (Optional) Skip errors from the embedder and continue processing
+  logging:
+    level: info
+#  monitoring:
+#    enabled: true
+#    port: 9090
+#  retry_policy:
+#    max_retries: 3
+#    backoff: 2s
+
+source:
+  type: http # Source type (Kafka or HTTP)
+  config:
+    port: "9093"        # Port where the HTTP source API listens for incoming messages
+    request_cap: 100    # Maximum number of requests to keep in memory before processing
+
+storage:
+  type: qdrant # Storage type (currently only Qdrant is supported)
+  config:
+    host: "localhost"        # Qdrant host
+    port: 6334               # Qdrant port
+    collectionName: "test3"  # Target collection name in Qdrant
+    vector_size: 768         # Embedding vector size
+    distance: cosine         # Distance metric (cosine, dot, euclidean)
+    fields:                  # Additional payload fields schema
+      title: string
+      year: string
+      genres: string
+      rating: float
+
+embedder:
+  type: ollama # Embedder type (currently Ollama is supported)
+  config:
+    endpoint: "http://localhost:11434/api/embeddings" # Ollama embeddings API endpoint
+    model: "nomic-embed-text"                         # Embedding model to use
