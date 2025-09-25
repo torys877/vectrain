@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: ollama
 spec:
-  replicas: 20
+  replicas: 5
   selector:
     matchLabels:
       app: ollama
@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: ollama
-          image: ollama/ollama:latest
+          image: ollama/ollama:0.12.1
           ports:
             - containerPort: 11434
           env:
@@ -22,11 +22,18 @@ spec:
               value: "24h"
           volumeMounts:
             - name: ollama-data
-              mountPath: /root/.ollama   # вот сюда уже скачалась модель
+              mountPath: /root/.ollama   # already downloaded model
+          resources:
+            limits:
+              cpu: "8"
+              memory: "16Gi"
+            requests:
+              cpu: "2"
+              memory: "4Gi"
       volumes:
         - name: ollama-data
           hostPath:
-            path: /home/torys/neoworkspace/2_projects/in_progress/vectrain/ollama/ollama_data
+            path: /ollama_data
             type: Directory
 ---
 apiVersion: v1
