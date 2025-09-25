@@ -19,7 +19,7 @@
 
 ## Pipeline
 
-![Alt text](./docs/vectrain_pipeline_transparency.png)
+![Alt text](./docs/vectrain_pipeline.png)
 
 ### Description
 
